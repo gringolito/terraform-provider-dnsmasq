@@ -1,92 +1,138 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package provider
 
 import (
 	"context"
-	"net/http"
+	"os"
+
+	"terraform-provider-dnsmasq/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/function"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Ensure ScaffoldingProvider satisfies various provider interfaces.
-var _ provider.Provider = &ScaffoldingProvider{}
-var _ provider.ProviderWithFunctions = &ScaffoldingProvider{}
+// Ensure dnsmasqProvider satisfies various provider interfaces.
+var _ provider.Provider = &dnsmasqProvider{}
 
-// ScaffoldingProvider defines the provider implementation.
-type ScaffoldingProvider struct {
+// dnsmasqProvider defines the provider implementation.
+type dnsmasqProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
 	version string
 }
 
-// ScaffoldingProviderModel describes the provider data model.
-type ScaffoldingProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
+// dnsmasqProviderModel describes the provider data model.
+type dnsmasqProviderModel struct {
+	URL   types.String `tfsdk:"api_url"`
+	Token types.String `tfsdk:"api_token"`
 }
 
-func (p *ScaffoldingProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "scaffolding"
+func (p *dnsmasqProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+	resp.TypeName = "dnsmasq"
 	resp.Version = p.version
 }
 
-func (p *ScaffoldingProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *dnsmasqProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "Use the dnsmasq provider to manage dnsmasq resources using the dnsmasq-manager API (see: https://github.com/gringolito/dnsmasq-manager).",
 		Attributes: map[string]schema.Attribute{
-			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "Example provider attribute",
+			"api_url": schema.StringAttribute{
+				MarkdownDescription: "dnsmasq-manager API URL.",
+				Required:            true,
+			},
+			"api_token": schema.StringAttribute{
+				MarkdownDescription: "dnsmasq-manager API JWT authentication token.",
 				Optional:            true,
+				Sensitive:           true,
 			},
 		},
 	}
 }
 
-func (p *ScaffoldingProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var data ScaffoldingProviderModel
+func (p *dnsmasqProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	var config dnsmasqProviderModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	// If practitioner provided a configuration value for any of the
+	// attributes, it must be a known value.
+	if config.URL.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("api_url"),
+			"Unknown dnsmasq-manager API URL",
+			"The provider cannot create the dnsmasq client as there is an unknown configuration value for the dnsmasq-manager API URL. "+
+				"Either target apply the source of the value first, set the value statically in the configuration, or use the DMM_API_URL environment variable.",
+		)
+	}
+	if config.Token.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("api_token"),
+			"Unknown dnsmasq-manager API token",
+			"The provider cannot create the dnsmasq client as there is an unknown configuration value for the dnsmasq-manager API token. "+
+				"Either target apply the source of the value first, set the value statically in the configuration, or use the DMM_API_TOKEN environment variable.",
+		)
+	}
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Configuration values are now available.
-	// if data.Endpoint.IsNull() { /* ... */ }
+	// Default values to environment variables, but override
+	// with Terraform configuration value if set.
+	url := os.Getenv("DMM_API_URL")
+	token := os.Getenv("DMM_API_TOKEN")
 
-	// Example client configuration for data sources and resources
-	client := http.DefaultClient
+	if !config.URL.IsNull() {
+		url = config.URL.ValueString()
+	}
+
+	if !config.Token.IsNull() {
+		token = config.Token.ValueString()
+	}
+
+	// If any of the expected configurations are missing, return
+	// errors with provider-specific guidance.
+	if url == "" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("api_url"),
+			"Missing dnsmasq-manager API URL",
+			"The provider cannot create the dnsmasq client as there is a missing or empty value for the dnsmasq-manager API URL. "+
+				"Set the host value in the configuration or use the DMM_API_URL environment variable. "+
+				"If either is already set, ensure the value is not empty.",
+		)
+	}
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	client := client.New(url, token)
+
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
 
-func (p *ScaffoldingProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *dnsmasqProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewExampleResource,
+		NewDhcpStaticHostResource,
 	}
 }
 
-func (p *ScaffoldingProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *dnsmasqProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewExampleDataSource,
-	}
-}
-
-func (p *ScaffoldingProvider) Functions(ctx context.Context) []func() function.Function {
-	return []func() function.Function{
-		NewExampleFunction,
+		NewDhcpStaticHostDataSource,
 	}
 }
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &ScaffoldingProvider{
+		return &dnsmasqProvider{
 			version: version,
 		}
 	}
