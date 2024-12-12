@@ -28,6 +28,7 @@ type DhcpStaticHostDataSourceModel struct {
 	MacAddress types.String `tfsdk:"mac_address"`
 	IPAddress  types.String `tfsdk:"ip_address"`
 	HostName   types.String `tfsdk:"hostname"`
+	Id         types.String `tfsdk:"id"`
 }
 
 func (d *DhcpStaticHostDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -49,6 +50,10 @@ func (d *DhcpStaticHostDataSource) Schema(ctx context.Context, req datasource.Sc
 			},
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "Hostname assigned to the host on the static DHCP lease reservation.",
+				Computed:            true,
+			},
+			"id": schema.StringAttribute{
+				MarkdownDescription: "Host MAC address identifier.",
 				Computed:            true,
 			},
 		},
@@ -77,14 +82,14 @@ func (d *DhcpStaticHostDataSource) Configure(ctx context.Context, req datasource
 
 func (d *DhcpStaticHostDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	// Read Terraform configuration data into the model
-	var config DhcpStaticHostDataSourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	var data DhcpStaticHostDataSourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	host, err := d.client.ReadStaticDhcpHost(config.MacAddress.ValueString())
+	host, err := d.client.ReadStaticDhcpHost(data.MacAddress.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read DHCP Static Host", err.Error())
 		return
@@ -93,10 +98,8 @@ func (d *DhcpStaticHostDataSource) Read(ctx context.Context, req datasource.Read
 	tflog.Trace(ctx, "read a DHCP static host data source")
 
 	// Save data into Terraform state
-	state := DhcpStaticHostDataSourceModel{
-		MacAddress: types.StringValue(host.MacAddress),
-		IPAddress:  types.StringValue(host.IPAddress),
-		HostName:   types.StringValue(host.HostName),
-	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	data.Id = types.StringValue((host.MacAddress))
+	data.IPAddress = types.StringValue(host.IPAddress)
+	data.HostName = types.StringValue(host.HostName)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

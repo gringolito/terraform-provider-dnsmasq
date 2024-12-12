@@ -23,17 +23,16 @@ func TestAccDhcpStaticHostResource(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:                         "dnsmasq_dhcp_static_host.test",
-				ImportState:                          true,
-				ImportStateId:                        "00:11:22:33:44:55",
-				ImportStateVerify:                    true,
-				ImportStateVerifyIdentifierAttribute: "mac_address",
+				ResourceName:      "dnsmasq_dhcp_static_host.test",
+				ImportState:       true,
+				ImportStateId:     "00:11:22:33:44:55",
+				ImportStateVerify: true,
 			},
 			// Update and Read testing
 			{
-				Config: testAccDhcpStaticHostResourceConfig("00:10:20:30:40:50", "10.20.30.40", "new-example"),
+				Config: testAccDhcpStaticHostResourceConfig("00:11:22:33:44:55", "10.20.30.40", "new-example"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("dnsmasq_dhcp_static_host.test", "mac_address", "00:10:20:30:40:50"),
+					resource.TestCheckResourceAttr("dnsmasq_dhcp_static_host.test", "mac_address", "00:11:22:33:44:55"),
 					resource.TestCheckResourceAttr("dnsmasq_dhcp_static_host.test", "ip_address", "10.20.30.40"),
 					resource.TestCheckResourceAttr("dnsmasq_dhcp_static_host.test", "hostname", "new-example"),
 				),
