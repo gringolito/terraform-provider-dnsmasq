@@ -21,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/providers/gringolito/dnsmasq",
+		Address: "registry.terraform.io/gringolito/dnsmasq",
 		Debug:   debug,
 	}
 
